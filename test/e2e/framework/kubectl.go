@@ -104,9 +104,23 @@ type KubectlBuilder struct {
 
 // NewKubectlCommand returns a KubectlBuilder for running kubectl.
 func NewKubectlCommand(args ...string) *KubectlBuilder {
+	return NewKubectlCommandTimeout(Timeout, args...)
+}
+
+// NewKubectlCommandTimeout returns a KubectlBuilder with a timeout defined, for running kubectl.
+func NewKubectlCommandTimeout(timeout time.Duration, args ...string) *KubectlBuilder {
 	b := new(KubectlBuilder)
 	b.cmd = KubectlCmd(args...)
+	b.timeout = time.After(timeout)
 	return b
+}
+
+// NewKubectlExecCommand returns a KubectlBuilder prepared to execute a given command in a running pod.
+func NewKubectlExecCommand(f *Framework, pod string, timeout time.Duration, commandArgs ...string) *KubectlBuilder {
+	defaultArgs := []string{}
+	defaultArgs = append(defaultArgs, "--namespace", f.Namespace, "exec", pod, "--")
+	defaultArgs = append(defaultArgs, commandArgs...)
+	return NewKubectlCommandTimeout(timeout, defaultArgs...)
 }
 
 // ExecOrDie runs the kubectl executable or dies if error occurs.
@@ -167,7 +181,7 @@ func (b KubectlBuilder) Exec() (string, error) {
 			}
 		}
 	case <-b.timeout:
-		b.cmd.Process.Kill()
+		_ = b.cmd.Process.Kill()
 		return "", fmt.Errorf("timed out waiting for command %v:\nCommand stdout:\n%v\nstderr:\n%v", cmd, cmd.Stdout, cmd.Stderr)
 	}
 	// Note: these help to debug
