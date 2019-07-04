@@ -1,12 +1,10 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/interconnectedcloud/qdr-operator/pkg/apis/interconnectedcloud/v1alpha1"
 	"github.com/interconnectedcloud/qdr-operator/test/e2e/framework"
-	"github.com/interconnectedcloud/qdr-operator/test/e2e/router-mgmt/entities"
-
+	router_mgmt "github.com/interconnectedcloud/qdr-operator/test/e2e/router-mgmt"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -65,23 +63,27 @@ func testKubectl(f *framework.Framework) {
 	By("Validating connections on all pods")
 	for _, pod := range pods.Items {
 
-		fmt.Println("Retrieving connections from POD:", pod.Name)
-		timeout := time.Duration(10 * time.Second)
-		kubectl := framework.NewKubectlExecCommand(f, pod.Name, timeout, "qdmanage", "query", "--type=connection")
-		//kubectl := framework.NewKubectlCommandTimeout(timeout, "--namespace=" + f.Namespace, "exec", pod.Name, "--", "ls", "-l", "/")
-		stdout, err := kubectl.Exec()
-		if err != nil {
-			fmt.Println("Error executing kubectl command", err)
-			return
+		conns, err := router_mgmt.QdmanageQueryConnections(f, pod.Name, nil)
+		for _, c := range conns {
+			fmt.Println("Connection Identity", c.Identity, "Error:", err)
 		}
-		fmt.Println("LS -L / - STDOUT:", stdout)
-
-		var connections []entities.Connection
-		_ = json.Unmarshal([]byte(stdout), &connections)
-
-		for _, c := range(connections) {
-			fmt.Println("Connection:", c.Name, c.Identity)
-		}
+		//fmt.Println("Retrieving connections from POD:", pod.Name)
+		//timeout := time.Duration(10 * time.Second)
+		//kubectl := framework.NewKubectlExecCommand(f, pod.Name, timeout, "qdmanage", "query", "--type=connection")
+		////kubectl := framework.NewKubectlCommandTimeout(timeout, "--namespace=" + f.Namespace, "exec", pod.Name, "--", "ls", "-l", "/")
+		//stdout, err := kubectl.Exec()
+		//if err != nil {
+		//	fmt.Println("Error executing kubectl command", err)
+		//	return
+		//}
+		//fmt.Println("LS -L / - STDOUT:", stdout)
+		//
+		//var connections []entities.Connection
+		//_ = json.Unmarshal([]byte(stdout), &connections)
+		//
+		//for _, c := range(connections) {
+		//	fmt.Println("Connection:", c.Name, c.Identity)
+		//}
 	}
 
 }

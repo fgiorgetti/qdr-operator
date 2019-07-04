@@ -14,7 +14,7 @@ type Connection struct {
 	OperStatus OperStatusType `json:"operStatus,string"`
 	Container string `json:"container"`
 	Opened bool `json:"opened"`
-	Host bool `json:"host"`
+	Host string `json:"host"`
 	Direction DirectionType `json:"dir,string"`
 	Role string `json:"role"`
 	IsAuthenticated bool `json:"isAuthenticated"`
@@ -24,7 +24,7 @@ type Connection struct {
 	Ssl bool `json:"ssl"`
 	SslProto string `json:"sslProto"`
 	SslCipher string `json:"sslCipher"`
-	SslSsf string `json:"sslSsf"`
+	SslSsf int `json:"sslSsf"`
 	Tenant string `json:"tenant"`
 	Properties map[string]string `json:"properties"`
 }
