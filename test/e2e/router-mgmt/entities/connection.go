@@ -29,6 +29,7 @@ type Connection struct {
 	Properties map[string]interface{} `json:"properties"`
 }
 
+// Implementation of Entity interface
 func (Connection) GetEntityId() string {
 	return "connection"
 }
@@ -39,6 +40,7 @@ const (
 	AdminStatusDeleted
 )
 
+// UnmarshalJSON returns the appropriate AdminStatusType for parsed string
 func (a *AdminStatusType) UnmarshalJSON(b []byte) error {
 	var s string
 
@@ -60,6 +62,7 @@ func (a *AdminStatusType) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON returns the string representation of AdminStatusType
 func (a AdminStatusType) MarshalJSON() ([]byte, error) {
 	var s string
 	switch a {
@@ -77,6 +80,7 @@ const (
 	OperStatusClosing
 )
 
+// UnmarshalJSON returns the appropriate OperStatusType for parsed string
 func (o *OperStatusType) UnmarshalJSON(b []byte) error {
 	var s string
 
@@ -98,6 +102,7 @@ func (o *OperStatusType) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON returns the string representation of OperStatusType
 func (o OperStatusType) MarshalJSON() ([]byte, error) {
 	var s string
 	switch o {
@@ -115,6 +120,7 @@ const (
 	DirectionTypeOut
 )
 
+// UnmarshalJSON returns the appropriate DirectionType for parsed string
 func (d *DirectionType) UnmarshalJSON(b []byte) error {
 	var s string
 
@@ -136,6 +142,7 @@ func (d *DirectionType) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON returns the string representation of DirectionType
 func (d DirectionType) MarshalJSON() ([]byte, error) {
 	var s string
 	switch d {
@@ -146,51 +153,3 @@ func (d DirectionType) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(s)
 }
-
-//const input string = `[
-// {
-//   "opened": true,
-//   "adminStatus": "enabled",
-//   "container": "6a32521a-4850-44dd-b9cf-4cfe76b58f36",
-//   "name": "connection/127.0.0.1:34594",
-//   "operStatus": "up",
-//   "ssl": false,
-//   "host": "127.0.0.1:34594",
-//   "isEncrypted": false,
-//   "role": "normal",
-//   "identity": "4",
-//   "isAuthenticated": false,
-//   "active": true,
-//   "sslSsf": 0,
-//   "type": "org.apache.qpid.dispatch.connection",
-//   "properties": {},
-//   "dir": "in",
-//   "user": "anonymous"
-// }
-//]`
-//
-//func main() {
-//	var connections2 []Connection
-//	json.Unmarshal([]byte(input), &connections2)
-//	for i, v := range connections2 {
-//		fmt.Printf("Connection[%d]\n", i)
-//		fmt.Printf("\tOpened: %v\n", v.Opened)
-//		fmt.Printf("\tAdminStatus: %v\n", v.AdminStatus)
-//		fmt.Printf("\tContainer: %v\n", v.Container)
-//		fmt.Printf("\tName: %v\n", v.Name)
-//		fmt.Printf("\tOperStatus: %v\n", v.OperStatus)
-//		fmt.Printf("\tSsl: %v\n", v.Ssl)
-//		fmt.Printf("\tHost: %v\n", v.Host)
-//		fmt.Printf("\tIsEncrypted: %v\n", v.IsEncrypted)
-//		fmt.Printf("\tRole: %v\n", v.Role)
-//		fmt.Printf("\tIdentity: %v\n", v.Identity)
-//		fmt.Printf("\tIsAuthenticated: %v\n", v.IsAuthenticated)
-//		fmt.Printf("\tActive: %v\n", v.Active)
-//		fmt.Printf("\tsslSsf: %v\n", v.SslSsf)
-//		fmt.Printf("\tType: %v\n", v.Type)
-//		fmt.Printf("\tProperties: %v\n", v.Properties)
-//		fmt.Printf("\tDir: %v\n", v.Direction)
-//		fmt.Printf("\tUser: %v\n", v.User)
-//	}
-//
-//}

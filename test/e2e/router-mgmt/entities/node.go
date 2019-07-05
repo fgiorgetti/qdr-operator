@@ -15,6 +15,7 @@ type Node struct {
 	Index int `json:"index"`
 }
 
+// Implementation of the Entity interface
 func (Node) GetEntityId() string {
 	return "router.node"
 }
