@@ -82,7 +82,7 @@ func testInteriorDefaults(f *framework.Framework) {
 	for _, pod := range pods.Items {
 		// TODO Better not checking the version as this would cause a failure if we test using
 		//      an different version for the interconnect image
-		_, err = framework.LookForStringInLog(f.Namespace, pod.Name, "interior-interconnect", "Version: 1.8.0", time.Second*5)
+		_, err = framework.LookForRegexpInLog(f.Namespace, pod.Name, "interior-interconnect", `Version:.*1\.8\.0`, time.Second*5)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = framework.LookForStringInLog(f.Namespace, pod.Name, "interior-interconnect", "Configured Listener: 0.0.0.0:5672 proto=any, role=normal", time.Second*1)
 		Expect(err).NotTo(HaveOccurred())
@@ -146,7 +146,7 @@ func testInteriorScaleUp(f *framework.Framework) {
 	for _, pod := range pods.Items {
 		var nodes []entities.Node
 		// Retry logic to retrieve nodes
-		err = wait.Poll(5 * time.Second, 20 * time.Second, func() (done bool, err error) {
+		err = wait.Poll(5*time.Second, 20*time.Second, func() (done bool, err error) {
 			if nodes, err = router_mgmt.QdmanageQueryNodes(f, pod.Name); err != nil {
 				return false, err
 			}

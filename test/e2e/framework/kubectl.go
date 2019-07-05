@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -91,6 +92,26 @@ func LookForString(expectedString string, timeout time.Duration, fn func() strin
 // LookForStringInLog looks for the given string in the log of a specific pod container
 func LookForStringInLog(ns, podName, container, expectedString string, timeout time.Duration) (result string, err error) {
 	return LookForString(expectedString, timeout, func() string {
+		return RunKubectlOrDie("logs", podName, container, fmt.Sprintf("--namespace=%v", ns))
+	})
+}
+
+// LookForRegexp looks for the given regexp in results from given "func() string"
+func LookForRegexp(expectedRegexp string, timeout time.Duration, fn func() string) (result string, err error) {
+	var expRegexp = regexp.MustCompile(expectedRegexp)
+	for t := time.Now(); time.Since(t) < timeout; time.Sleep(Poll) {
+		result = fn()
+		if expRegexp.MatchString(result) {
+			return
+		}
+	}
+	err = fmt.Errorf("Failed to find \"%s\", last result: \"%s\"", expectedRegexp, result)
+	return
+}
+
+// LookForRegexpInLog looks for the given regexp in the log of a specific pod container
+func LookForRegexpInLog(ns, podName, container, expectedRegexp string, timeout time.Duration) (result string, err error) {
+	return LookForRegexp(expectedRegexp, timeout, func() string {
 		return RunKubectlOrDie("logs", podName, container, fmt.Sprintf("--namespace=%v", ns))
 	})
 }

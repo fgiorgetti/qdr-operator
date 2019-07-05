@@ -9,24 +9,24 @@ import (
 // Connection represents a Dispatch Router connection
 type Connection struct {
 	EntityCommon
-	Active bool `json:"active"`
-	AdminStatus AdminStatusType `json:"adminStatus,string"`
-	OperStatus OperStatusType `json:"operStatus,string"`
-	Container string `json:"container"`
-	Opened bool `json:"opened"`
-	Host string `json:"host"`
-	Direction DirectionType `json:"dir,string"`
-	Role string `json:"role"`
-	IsAuthenticated bool `json:"isAuthenticated"`
-	IsEncrypted bool `json:"isEncrypted"`
-	Sasl string `json:"sasl"`
-	User string `json:"user"`
-	Ssl bool `json:"ssl"`
-	SslProto string `json:"sslProto"`
-	SslCipher string `json:"sslCipher"`
-	SslSsf int `json:"sslSsf"`
-	Tenant string `json:"tenant"`
-	Properties map[string]interface{} `json:"properties"`
+	Active          bool                   `json:"active"`
+	AdminStatus     AdminStatusType        `json:"adminStatus,string"`
+	OperStatus      OperStatusType         `json:"operStatus,string"`
+	Container       string                 `json:"container"`
+	Opened          bool                   `json:"opened"`
+	Host            string                 `json:"host"`
+	Direction       DirectionType          `json:"dir,string"`
+	Role            string                 `json:"role"`
+	IsAuthenticated bool                   `json:"isAuthenticated"`
+	IsEncrypted     bool                   `json:"isEncrypted"`
+	Sasl            string                 `json:"sasl"`
+	User            string                 `json:"user"`
+	Ssl             bool                   `json:"ssl"`
+	SslProto        string                 `json:"sslProto"`
+	SslCipher       string                 `json:"sslCipher"`
+	SslSsf          int                    `json:"sslSsf"`
+	Tenant          string                 `json:"tenant"`
+	Properties      map[string]interface{} `json:"properties"`
 }
 
 // Implementation of Entity interface
@@ -35,6 +35,7 @@ func (Connection) GetEntityId() string {
 }
 
 type AdminStatusType int
+
 const (
 	AdminStatusEnabled AdminStatusType = iota
 	AdminStatusDeleted
@@ -75,6 +76,7 @@ func (a AdminStatusType) MarshalJSON() ([]byte, error) {
 }
 
 type OperStatusType int
+
 const (
 	OperStatusUp OperStatusType = iota
 	OperStatusClosing
@@ -115,6 +117,7 @@ func (o OperStatusType) MarshalJSON() ([]byte, error) {
 }
 
 type DirectionType int
+
 const (
 	DirectionTypeIn DirectionType = iota
 	DirectionTypeOut
