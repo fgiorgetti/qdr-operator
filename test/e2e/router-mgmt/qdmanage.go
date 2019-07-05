@@ -25,12 +25,18 @@ func QdmanageQuery(f *framework.Framework, pod string, entity string) (string, e
 }
 
 // QdmanageQueryConnections use qdmanage to query existing connections on the given pod
-func QdmanageQueryConnections(f *framework.Framework, pod string, filter func(entity interface{}) bool) ([]entities.Connection, error) {
-	jsonstring, err := QdmanageQuery(f, pod, entities.Connection{}.GetEntityId())
+func QdmanageQueryConnections(f *framework.Framework, pod string) ([]entities.Connection, error) {
+	return QdmanageQueryConnectionsFilter(f, pod, nil)
+}
+
+// QdmanageQueryConnectionsFilter use qdmanage to query existing connections on the given pod
+// filtering entities using the provided filter function (if one is given)
+func QdmanageQueryConnectionsFilter(f *framework.Framework, pod string, filter func(entity interface{}) bool) ([]entities.Connection, error) {
+	jsonString, err := QdmanageQuery(f, pod, entities.Connection{}.GetEntityId())
 	var connections []entities.Connection
 	if err == nil {
-		err = json.Unmarshal([]byte(jsonstring), &connections)
-		filtered := filterEntities(connections, filter)
+		err = json.Unmarshal([]byte(jsonString), &connections)
+		filtered := FilterEntities(connections, filter)
 		connections = nil
 		for _, v := range filtered {
 			connections = append(connections, v.(entities.Connection))
@@ -40,12 +46,19 @@ func QdmanageQueryConnections(f *framework.Framework, pod string, filter func(en
 }
 
 // QdmanageQueryNodes use qdmanage to query existing nodes on the given pod
-func QdmanageQueryNodes(f *framework.Framework, pod string, filter func(entity interface{}) bool) ([]entities.Node, error) {
-	jsonstring, err := QdmanageQuery(f, pod, entities.Node{}.GetEntityId())
+func QdmanageQueryNodes(f *framework.Framework, pod string) ([]entities.Node, error) {
+	return QdmanageQueryNodesFilter(f, pod, nil)
+}
+
+// QdmanageQueryNodesFilter use qdmanage to query existing nodes on the given pod
+// filtering entities using the provided filter function (if one given)
+func QdmanageQueryNodesFilter(f *framework.Framework, pod string, filter func(entity interface{}) bool) ([]entities.Node, error) {
+
+	jsonString, err := QdmanageQuery(f, pod, entities.Node{}.GetEntityId())
 	var nodes []entities.Node
 	if err == nil {
-		err = json.Unmarshal([]byte(jsonstring), &nodes)
-		filtered := filterEntities(nodes, filter)
+		err = json.Unmarshal([]byte(jsonString), &nodes)
+		filtered := FilterEntities(nodes, filter)
 		nodes = nil
 		for _, v := range filtered {
 			nodes = append(nodes, v.(entities.Node))
@@ -56,7 +69,7 @@ func QdmanageQueryNodes(f *framework.Framework, pod string, filter func(entity i
 
 // filter is an internal method to be invoked by specific Query<Entity> methods
 // so all methods can reuse the same code for filtering entities
-func filterEntities(i interface{}, fn func(i interface{}) bool) []interface{} {
+func FilterEntities(i interface{}, fn func(i interface{}) bool) []interface{} {
 	s := reflect.ValueOf(i)
 	if s.Kind() != reflect.Slice {
 		panic("Expecting a slice")

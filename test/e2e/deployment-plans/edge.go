@@ -10,7 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("[interior] Interconnect edge deployment tests", func() {
+var _ = Describe("[edge] Interconnect edge deployment tests", func() {
 
 	f := framework.NewFramework("basic-edge", nil)
 
