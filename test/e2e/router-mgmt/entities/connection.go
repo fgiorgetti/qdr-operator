@@ -26,7 +26,7 @@ type Connection struct {
 	SslCipher string `json:"sslCipher"`
 	SslSsf int `json:"sslSsf"`
 	Tenant string `json:"tenant"`
-	Properties map[string]string `json:"properties"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 func (Connection) GetEntityId() string {

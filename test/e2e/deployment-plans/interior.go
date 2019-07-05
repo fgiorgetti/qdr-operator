@@ -158,6 +158,21 @@ func testInteriorScaleUp(f *framework.Framework) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(nodes)).To(Equal(4))
 	}
+
+	By("Verifying each node has 3 inter-router connections")
+	for _, pod := range pods.Items {
+		// Retrieving inter-router connections 3 on each of the 4 nodes
+		conns, err := router_mgmt.QdmanageQueryConnectionsFilter(f, pod.Name, func(entity interface{}) bool {
+			conn := entity.(entities.Connection)
+			if conn.Role == "inter-router" && conn.Opened {
+				return true
+			}
+			return false
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(len(conns)).To(Equal(3))
+	}
+
 }
 
 func testInteriorScaleDown(f *framework.Framework) {
