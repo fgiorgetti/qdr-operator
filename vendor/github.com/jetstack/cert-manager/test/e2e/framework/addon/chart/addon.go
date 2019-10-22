@@ -156,7 +156,8 @@ func (c *Chart) runInstall() error {
 	args := []string{"install", c.ChartName,
 		"--wait",
 		"--namespace", c.Namespace,
-		"--name", c.ReleaseName}
+		"--name", c.ReleaseName,
+		"--version", c.ChartVersion}
 
 	for _, v := range c.Values {
 		args = append(args, "--values", v)
@@ -250,32 +251,47 @@ func (c *Chart) SupportsGlobal() bool {
 
 func (c *Chart) Logs() (map[string]string, error) {
 	kc := c.Tiller.Base.Details().KubeClient
-	pods, err := kc.CoreV1().Pods(c.Namespace).List(metav1.ListOptions{LabelSelector: "release=" + c.ReleaseName})
+	oldLabelPods, err := kc.CoreV1().Pods(c.Namespace).List(metav1.ListOptions{LabelSelector: "release=" + c.ReleaseName})
 	if err != nil {
 		return nil, err
 	}
 
+	// also check pods with the new style labels used in the cert-manager chart
+	newLabelPods, err := kc.CoreV1().Pods(c.Namespace).List(metav1.ListOptions{LabelSelector: "app.kubernetes.io/instance=" + c.ReleaseName})
+	if err != nil {
+		return nil, err
+	}
+	podList := append(oldLabelPods.Items, newLabelPods.Items...)
+
 	out := make(map[string]string)
-	for _, pod := range pods.Items {
-		// Only grab logs from the first container in the pod
-		// TODO: grab logs from all containers
-		containerName := pod.Spec.Containers[0].Name
-		resp := kc.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-			Container: containerName,
-		}).Do()
+	for _, pod := range podList {
+		for _, con := range pod.Spec.Containers {
+			for _, b := range []bool{true, false} {
+				resp := kc.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+					Container: con.Name,
+					Previous:  b,
+				}).Do()
 
-		err := resp.Error()
-		if err != nil {
-			continue
+				err := resp.Error()
+				if err != nil {
+					continue
+				}
+
+				logs, err := resp.Raw()
+				if err != nil {
+					continue
+				}
+
+				outPath := path.Join(c.Namespace,
+					fmt.Sprintf("%s-%s", pod.Name, con.Name))
+
+				if b {
+					outPath = fmt.Sprintf("%s-previous", outPath)
+				}
+
+				out[outPath] = string(logs)
+			}
 		}
-
-		logs, err := resp.Raw()
-		if err != nil {
-			continue
-		}
-
-		outPath := path.Join(c.Namespace, pod.Name)
-		out[outPath] = string(logs)
 	}
 
 	return out, nil

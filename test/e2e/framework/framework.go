@@ -16,6 +16,7 @@ package framework
 
 import (
 	"fmt"
+	"github.com/interconnectedcloud/qdr-operator/pkg/resources/certificates"
 	"strings"
 	"time"
 
@@ -119,13 +120,17 @@ func (f *Framework) BeforeEach() {
 		f.UniqueName = string(uuid.NewUUID())
 	}
 
-	_, err := f.ExtClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get("issuers.certmanager.k8s.io", metav1.GetOptions{})
-	if err == nil {
-		f.CertManagerPresent = true
+	// New version is present
+	for _, provider := range certificates.GetCrtmgrProviders() {
+		_, err := f.ExtClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get("issuers."+provider.GetCertManagerAPIGroup(), metav1.GetOptions{})
+		if err == nil {
+			f.CertManagerPresent = true
+			break
+		}
 	}
 
 	// setup the operator
-	err = f.Setup()
+	err := f.Setup()
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 }
 
@@ -306,6 +311,11 @@ func (f *Framework) setupQdrRole() error {
 			},
 			{
 				APIGroups: []string{"certmanager.k8s.io"},
+				Resources: []string{"issuers", "certificates"},
+				Verbs:     []string{"get", "list", "watch", "create", "delete"},
+			},
+			{
+				APIGroups: []string{"cert-manager.io"},
 				Resources: []string{"issuers", "certificates"},
 				Verbs:     []string{"get", "list", "watch", "create", "delete"},
 			},

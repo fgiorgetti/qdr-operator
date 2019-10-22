@@ -17,8 +17,9 @@ limitations under the License.
 package config
 
 import (
-	"flag"
 	"fmt"
+
+	"flag"
 )
 
 type Nginx struct {
@@ -46,7 +47,7 @@ type NginxRuntimeConfig struct {
 }
 
 func (n *Nginx) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&n.ChartVersion, "nginx-ingress-chart-version", "0.29.1", "nginx-ingress chart version to use during tests")
+	fs.StringVar(&n.ChartVersion, "nginx-ingress-chart-version", "1.23.0", "nginx-ingress chart version to use during tests")
 
 	n.Global.AddFlags(fs)
 }

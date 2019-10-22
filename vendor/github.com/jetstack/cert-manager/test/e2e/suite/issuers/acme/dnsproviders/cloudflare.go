@@ -20,7 +20,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	cmacme "github.com/jetstack/cert-manager/pkg/apis/acme/v1alpha2"
+	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	"github.com/jetstack/cert-manager/test/e2e/framework/addon/base"
 	"github.com/jetstack/cert-manager/test/e2e/framework/config"
 	"github.com/jetstack/cert-manager/test/e2e/framework/util/errors"
@@ -82,12 +83,11 @@ func (b *Cloudflare) Provision() error {
 	}
 
 	b.createdSecret = s
-	b.details.ProviderConfig = cmapi.ACMEIssuerDNS01Provider{
-		Name: "dummy-provider",
-		Cloudflare: &cmapi.ACMEIssuerDNS01ProviderCloudflare{
+	b.details.ProviderConfig = cmacme.ACMEChallengeSolverDNS01{
+		Cloudflare: &cmacme.ACMEIssuerDNS01ProviderCloudflare{
 			Email: b.cf.Email,
-			APIKey: cmapi.SecretKeySelector{
-				LocalObjectReference: cmapi.LocalObjectReference{
+			APIKey: cmmeta.SecretKeySelector{
+				LocalObjectReference: cmmeta.LocalObjectReference{
 					Name: b.createdSecret.Name,
 				},
 				Key: "api-key",

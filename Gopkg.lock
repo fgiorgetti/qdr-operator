@@ -310,15 +310,27 @@
   version = "v0.3.7"
 
 [[projects]]
-  digest = "1:68822a09e1e35090bd3fe737de741981f6f78ab46c77a0025cec02503b2c5c18"
+  digest = "1:bc6142aaf4cc35a392e592475738597c75b7622ac062bd487e82d927e7eda207"
+  name = "github.com/interconnectedcloud/cert-manager"
+  packages = ["pkg/apis/certmanager/v1alpha1"]
+  pruneopts = "NT"
+  revision = "4aa10bedc83b38f48509966c0f04dc05ab8ea482"
+  version = "v0.10.1"
+
+[[projects]]
+  digest = "1:f1fd9c7baba616692f13acc0eb82eed95e4c7813276e7cb281ade43adb0119d1"
   name = "github.com/jetstack/cert-manager"
   packages = [
+    "pkg/apis/acme",
+    "pkg/apis/acme/v1alpha2",
     "pkg/apis/certmanager",
-    "pkg/apis/certmanager/v1alpha1",
+    "pkg/apis/certmanager/v1alpha2",
+    "pkg/apis/meta",
+    "pkg/apis/meta/v1",
   ]
   pruneopts = "NT"
-  revision = "193c5e22d6d2ad56956b97c7e4899267bd4ac3ac"
-  version = "v0.7.0"
+  revision = "b030b7eb4865adf031b0ad92c6b44576dec14d4e"
+  version = "v0.11.0"
 
 [[projects]]
   digest = "1:1d39c063244ad17c4b18e8da1551163b6ffb52bd1640a49a8ec5c3b7bf4dbd5d"
@@ -1060,7 +1072,9 @@
     "github.com/RHsyseng/operator-utils/pkg/utils/openshift",
     "github.com/RHsyseng/operator-utils/pkg/validation",
     "github.com/ghodss/yaml",
-    "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1",
+    "github.com/interconnectedcloud/cert-manager/pkg/apis/certmanager/v1alpha1",
+    "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2",
+    "github.com/jetstack/cert-manager/pkg/apis/meta/v1",
     "github.com/onsi/ginkgo",
     "github.com/onsi/ginkgo/config",
     "github.com/onsi/ginkgo/reporters",
@@ -1072,6 +1086,7 @@
     "github.com/operator-framework/operator-sdk/pkg/leader",
     "github.com/operator-framework/operator-sdk/version",
     "github.com/stretchr/testify/assert",
+    "gopkg.in/yaml.v2",
     "k8s.io/api/apps/v1",
     "k8s.io/api/core/v1",
     "k8s.io/api/extensions/v1beta1",

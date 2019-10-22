@@ -19,17 +19,18 @@ package certificate
 import (
 	"time"
 
-	"github.com/jetstack/cert-manager/test/util/generate"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	cmacme "github.com/jetstack/cert-manager/pkg/apis/acme/v1alpha2"
+	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 	"github.com/jetstack/cert-manager/test/e2e/framework"
 	"github.com/jetstack/cert-manager/test/e2e/framework/addon"
 	"github.com/jetstack/cert-manager/test/e2e/suite/issuers/acme/dnsproviders"
 	"github.com/jetstack/cert-manager/test/e2e/util"
+	"github.com/jetstack/cert-manager/test/unit/gen"
 )
 
 type dns01Provider interface {
@@ -66,35 +67,37 @@ func testDNSProvider(name string, p dns01Provider) bool {
 			dnsDomain = p.Details().NewTestDomain()
 
 			By("Creating an Issuer")
-			issuer := generate.Issuer(generate.IssuerConfig{
-				Name:              issuerName,
-				Namespace:         f.Namespace.Name,
-				ACMESkipTLSVerify: true,
-				// Hardcode this to the acme staging endpoint now due to issues with pebble dns resolution
-				ACMEServer: "https://acme-staging-v02.api.letsencrypt.org/directory",
-				// ACMEServer:         framework.TestContext.ACMEURL,
-				ACMEEmail:          testingACMEEmail,
-				ACMEPrivateKeyName: testingACMEPrivateKey,
-				DNS01: &v1alpha1.ACMEIssuerDNS01Config{
-					Providers: []v1alpha1.ACMEIssuerDNS01Provider{
-						p.Details().ProviderConfig,
+			issuer := gen.Issuer(issuerName,
+				gen.SetIssuerACME(cmacme.ACMEIssuer{
+					SkipTLSVerify: true,
+					Server:        "https://acme-staging-v02.api.letsencrypt.org/directory",
+					Email:         testingACMEEmail,
+					PrivateKey: cmmeta.SecretKeySelector{
+						LocalObjectReference: cmmeta.LocalObjectReference{
+							Name: testingACMEPrivateKey,
+						},
 					},
-				},
-			})
-			issuer, err := f.CertManagerClientSet.CertmanagerV1alpha1().Issuers(f.Namespace.Name).Create(issuer)
+					Solvers: []cmacme.ACMEChallengeSolver{
+						{
+							DNS01: &p.Details().ProviderConfig,
+						},
+					},
+				}))
+			issuer.Namespace = f.Namespace.Name
+			issuer, err := f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Create(issuer)
 			Expect(err).NotTo(HaveOccurred())
 			By("Waiting for Issuer to become Ready")
-			err = util.WaitForIssuerCondition(f.CertManagerClientSet.CertmanagerV1alpha1().Issuers(f.Namespace.Name),
+			err = util.WaitForIssuerCondition(f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name),
 				issuerName,
-				v1alpha1.IssuerCondition{
-					Type:   v1alpha1.IssuerConditionReady,
-					Status: v1alpha1.ConditionTrue,
+				v1alpha2.IssuerCondition{
+					Type:   v1alpha2.IssuerConditionReady,
+					Status: cmmeta.ConditionTrue,
 				})
 			Expect(err).NotTo(HaveOccurred())
 			By("Verifying the ACME account URI is set")
-			err = util.WaitForIssuerStatusFunc(f.CertManagerClientSet.CertmanagerV1alpha1().Issuers(f.Namespace.Name),
+			err = util.WaitForIssuerStatusFunc(f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name),
 				issuerName,
-				func(i *v1alpha1.Issuer) (bool, error) {
+				func(i *v1alpha2.Issuer) (bool, error) {
 					if i.GetStatus().ACMEStatus().URI == "" {
 						return false, nil
 					}
@@ -111,7 +114,7 @@ func testDNSProvider(name string, p dns01Provider) bool {
 
 		AfterEach(func() {
 			By("Cleaning up")
-			f.CertManagerClientSet.CertmanagerV1alpha1().Issuers(f.Namespace.Name).Delete(issuerName, nil)
+			f.CertManagerClientSet.CertmanagerV1alpha2().Issuers(f.Namespace.Name).Delete(issuerName, nil)
 			f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(testingACMEPrivateKey, nil)
 			f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).Delete(certificateSecretName, nil)
 		})
@@ -119,20 +122,15 @@ func testDNSProvider(name string, p dns01Provider) bool {
 		It("should obtain a signed certificate for a regular domain", func() {
 			By("Creating a Certificate")
 
-			certClient := f.CertManagerClientSet.CertmanagerV1alpha1().Certificates(f.Namespace.Name)
+			certClient := f.CertManagerClientSet.CertmanagerV1alpha2().Certificates(f.Namespace.Name)
 
-			cert := generate.Certificate(generate.CertificateConfig{
-				Name:       certificateName,
-				Namespace:  f.Namespace.Name,
-				SecretName: certificateSecretName,
-				IssuerName: issuerName,
-				DNSNames:   []string{dnsDomain},
-				SolverConfig: v1alpha1.SolverConfig{
-					DNS01: &v1alpha1.DNS01SolverConfig{
-						Provider: p.Details().ProviderConfig.Name,
-					},
-				},
-			})
+			cert := gen.Certificate(certificateName,
+				gen.SetCertificateSecretName(certificateSecretName),
+				gen.SetCertificateIssuer(cmmeta.ObjectReference{Name: issuerName}),
+				gen.SetCertificateDNSNames(dnsDomain),
+			)
+			cert.Namespace = f.Namespace.Name
+
 			cert, err := certClient.Create(cert)
 			Expect(err).NotTo(HaveOccurred())
 			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
@@ -142,19 +140,14 @@ func testDNSProvider(name string, p dns01Provider) bool {
 		It("should obtain a signed certificate for a wildcard domain", func() {
 			By("Creating a Certificate")
 
-			cert := generate.Certificate(generate.CertificateConfig{
-				Name:       certificateName,
-				Namespace:  f.Namespace.Name,
-				SecretName: certificateSecretName,
-				IssuerName: issuerName,
-				DNSNames:   []string{"*." + dnsDomain},
-				SolverConfig: v1alpha1.SolverConfig{
-					DNS01: &v1alpha1.DNS01SolverConfig{
-						Provider: p.Details().ProviderConfig.Name,
-					},
-				},
-			})
-			cert, err := f.CertManagerClientSet.CertmanagerV1alpha1().Certificates(f.Namespace.Name).Create(cert)
+			cert := gen.Certificate(certificateName,
+				gen.SetCertificateSecretName(certificateSecretName),
+				gen.SetCertificateIssuer(cmmeta.ObjectReference{Name: issuerName}),
+				gen.SetCertificateDNSNames("*."+dnsDomain),
+			)
+			cert.Namespace = f.Namespace.Name
+
+			cert, err := f.CertManagerClientSet.CertmanagerV1alpha2().Certificates(f.Namespace.Name).Create(cert)
 			Expect(err).NotTo(HaveOccurred())
 			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*5)
 			Expect(err).NotTo(HaveOccurred())
@@ -163,19 +156,14 @@ func testDNSProvider(name string, p dns01Provider) bool {
 		It("should obtain a signed certificate for a wildcard and apex domain", func() {
 			By("Creating a Certificate")
 
-			cert := generate.Certificate(generate.CertificateConfig{
-				Name:       certificateName,
-				Namespace:  f.Namespace.Name,
-				SecretName: certificateSecretName,
-				IssuerName: issuerName,
-				DNSNames:   []string{"*." + dnsDomain, dnsDomain},
-				SolverConfig: v1alpha1.SolverConfig{
-					DNS01: &v1alpha1.DNS01SolverConfig{
-						Provider: p.Details().ProviderConfig.Name,
-					},
-				},
-			})
-			cert, err := f.CertManagerClientSet.CertmanagerV1alpha1().Certificates(f.Namespace.Name).Create(cert)
+			cert := gen.Certificate(certificateName,
+				gen.SetCertificateSecretName(certificateSecretName),
+				gen.SetCertificateIssuer(cmmeta.ObjectReference{Name: issuerName}),
+				gen.SetCertificateDNSNames("*."+dnsDomain, dnsDomain),
+			)
+			cert.Namespace = f.Namespace.Name
+
+			cert, err := f.CertManagerClientSet.CertmanagerV1alpha2().Certificates(f.Namespace.Name).Create(cert)
 			Expect(err).NotTo(HaveOccurred())
 			// use a longer timeout for this, as it requires performing 2 dns validations in serial
 			err = h.WaitCertificateIssuedValid(f.Namespace.Name, certificateName, time.Minute*10)

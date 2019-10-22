@@ -19,63 +19,46 @@ package certificates
 import (
 	"fmt"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/util/workqueue"
 
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
-	"k8s.io/klog"
+	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+	cmlisters "github.com/jetstack/cert-manager/pkg/client/listers/certmanager/v1alpha2"
+	logf "github.com/jetstack/cert-manager/pkg/logs"
 )
 
-func (c *Controller) handleGenericIssuer(obj interface{}) {
-	iss, ok := obj.(cmapi.GenericIssuer)
-	if !ok {
-		runtime.HandleError(fmt.Errorf("Object does not implement GenericIssuer %#v", obj))
-		return
-	}
+func secretResourceHandler(log logr.Logger, certificateLister cmlisters.CertificateLister, queue workqueue.Interface) func(obj interface{}) {
+	return func(obj interface{}) {
+		log := log.WithName("handleSecretResource")
 
-	certs, err := c.certificatesForGenericIssuer(iss)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("Error looking up Certificates observing Issuer/ClusterIssuer: %s/%s", iss.GetObjectMeta().Namespace, iss.GetObjectMeta().Name))
-		return
-	}
-	for _, crt := range certs {
-		key, err := keyFunc(crt)
-		if err != nil {
-			runtime.HandleError(err)
-			continue
+		secret, ok := obj.(*corev1.Secret)
+		if !ok {
+			log.Error(nil, "object is not a Secret resource")
+			return
 		}
-		c.queue.Add(key)
+		log = logf.WithResource(log, secret)
+
+		crts, err := certificatesForSecret(certificateLister, secret)
+		if err != nil {
+			log.Error(err, "error looking up Certificates observing Secret")
+			return
+		}
+		for _, crt := range crts {
+			log := logf.WithRelatedResource(log, crt)
+			key, err := keyFunc(crt)
+			if err != nil {
+				log.Error(err, "error computing key for resource")
+				continue
+			}
+			queue.Add(key)
+		}
 	}
 }
 
-func (c *Controller) handleSecretResource(obj interface{}) {
-	var secret *corev1.Secret
-	var ok bool
-	secret, ok = obj.(*corev1.Secret)
-	if !ok {
-		runtime.HandleError(fmt.Errorf("Object is not a Secret object %#v", obj))
-		return
-	}
-	crts, err := c.certificatesForSecret(secret)
-	if err != nil {
-		runtime.HandleError(fmt.Errorf("Error looking up Certificates observing Secret: %s/%s", secret.Namespace, secret.Name))
-		return
-	}
-	for _, crt := range crts {
-		key, err := keyFunc(crt)
-		if err != nil {
-			runtime.HandleError(err)
-			continue
-		}
-		c.queue.Add(key)
-	}
-}
-
-func (c *Controller) certificatesForSecret(secret *corev1.Secret) ([]*cmapi.Certificate, error) {
-	crts, err := c.certificateLister.List(labels.NewSelector())
+func certificatesForSecret(certificateLister cmlisters.CertificateLister, secret *corev1.Secret) ([]*cmapi.Certificate, error) {
+	crts, err := certificateLister.List(labels.NewSelector())
 
 	if err != nil {
 		return nil, fmt.Errorf("error listing certificiates: %s", err.Error())
@@ -92,65 +75,4 @@ func (c *Controller) certificatesForSecret(secret *corev1.Secret) ([]*cmapi.Cert
 	}
 
 	return affected, nil
-}
-
-func (c *Controller) certificatesForGenericIssuer(iss cmapi.GenericIssuer) ([]*cmapi.Certificate, error) {
-	crts, err := c.certificateLister.List(labels.NewSelector())
-
-	if err != nil {
-		return nil, fmt.Errorf("error listing certificiates: %s", err.Error())
-	}
-
-	_, isClusterIssuer := iss.(*cmapi.ClusterIssuer)
-
-	var affected []*cmapi.Certificate
-	for _, crt := range crts {
-		if isClusterIssuer && crt.Spec.IssuerRef.Kind != cmapi.ClusterIssuerKind {
-			continue
-		}
-		if !isClusterIssuer {
-			if crt.Namespace != iss.GetObjectMeta().Namespace {
-				continue
-			}
-		}
-		if crt.Spec.IssuerRef.Name != iss.GetObjectMeta().Name {
-			continue
-		}
-		affected = append(affected, crt)
-	}
-
-	return affected, nil
-}
-
-func (c *Controller) handleOwnedResource(obj interface{}) {
-	metaobj, ok := obj.(metav1.Object)
-	if !ok {
-		klog.Errorf("item passed to handleOwnedResource does not implement ObjectMetaAccessor")
-		return
-	}
-
-	ownerRefs := metaobj.GetOwnerReferences()
-	for _, ref := range ownerRefs {
-		// Parse the Group out of the OwnerReference to compare it to what was parsed out of the requested OwnerType
-		refGV, err := schema.ParseGroupVersion(ref.APIVersion)
-		if err != nil {
-			klog.Errorf("Could not parse OwnerReference GroupVersion: %v", err)
-			continue
-		}
-
-		if refGV.Group == certificateGvk.Group && ref.Kind == certificateGvk.Kind {
-			// TODO: how to handle namespace of owner references?
-			cert, err := c.certificateLister.Certificates(metaobj.GetNamespace()).Get(ref.Name)
-			if err != nil {
-				klog.Errorf("Error getting Certificate %q referenced by resource %q", ref.Name, metaobj.GetName())
-				continue
-			}
-			objKey, err := keyFunc(cert)
-			if err != nil {
-				runtime.HandleError(err)
-				continue
-			}
-			c.queue.Add(objKey)
-		}
-	}
 }

@@ -230,6 +230,7 @@ items:
                     - '*'
                   - apiGroups:
                     - "certmanager.k8s.io"
+                    - "cert-manager.io"
                     resources:
                     - issuers
                     - certificates

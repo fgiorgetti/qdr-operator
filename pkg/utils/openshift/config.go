@@ -4,7 +4,7 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	configv1client "github.com/openshift/client-go/config/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	sigsconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
@@ -15,7 +15,7 @@ var (
 func GetDnsConfig() *configv1.DNS {
 	dns := &configv1.DNS{}
 
-	config, err := config.GetConfig()
+	config, err := sigsconfig.GetConfig()
 	if err != nil {
 		logcfg.Error(err, "Error getting config: %v")
 	}

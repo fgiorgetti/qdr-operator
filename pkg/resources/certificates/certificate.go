@@ -1,20 +1,42 @@
 package certificates
 
 import (
+	"fmt"
 	v1alpha1 "github.com/interconnectedcloud/qdr-operator/pkg/apis/interconnectedcloud/v1alpha1"
-	"github.com/interconnectedcloud/qdr-operator/pkg/utils/configs"
-	cmv1alpha1 "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	"github.com/interconnectedcloud/qdr-operator/pkg/resources/certificates/providers"
 	apiextv1b1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	sigsconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 var (
 	certmgr_detected *bool
+	Provider         CertificateProvider
 	log              = logf.Log.WithName("certificates")
 )
+
+type CertificateProvider interface {
+	AddToScheme(scheme *runtime.Scheme) error
+	GetSchemaGroupVersion() schema.GroupVersion
+	GetCertManagerAPIVersion() string
+	GetCertManagerAPIGroup() string
+	GetCertManagerAPIGroupVersion() string
+	GetCertificateName(certificate interface{}) string
+	GetCASecretName(caIssuer interface{}) string
+	UpdateCASecretName(caIssuer interface{}, secret string)
+	NewIssuer() runtime.Object
+	NewCertificate() runtime.Object
+	NewSelfSignedIssuerForCR(m *v1alpha1.Interconnect) metav1.Object
+	NewCAIssuerForCR(m *v1alpha1.Interconnect, secret string) metav1.Object
+	NewCAIssuer(name string, namespace string, secret string) metav1.Object
+	NewSelfSignedCACertificateForCR(m *v1alpha1.Interconnect) metav1.Object
+	NewCertificateForCR(m *v1alpha1.Interconnect, profileName string, certName string, issuer string) metav1.Object
+	NewCACertificateForCR(m *v1alpha1.Interconnect, name string) metav1.Object
+}
 
 func DetectCertmgrIssuer() bool {
 	// find certmanager issuer crd
@@ -25,8 +47,17 @@ func DetectCertmgrIssuer() bool {
 	return *certmgr_detected
 }
 
+// populateCrtmgrProviders will initialize the certmgrProviders slice
+// with all valid implementations.
+func GetCrtmgrProviders() []CertificateProvider {
+	return []CertificateProvider{
+		&providers.CertificateProviderV1alpha2{},
+		&providers.CertificateProviderV1alpha1{},
+	}
+}
+
 func detectCertmgr() bool {
-	config, err := config.GetConfig()
+	config, err := sigsconfig.GetConfig()
 	if err != nil {
 		log.Error(err, "Error getting config: %v")
 		return false
@@ -40,150 +71,16 @@ func detectCertmgr() bool {
 	}
 
 	crd := &apiextv1b1.CustomResourceDefinition{}
-	crd, err = extClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get("issuers.certmanager.k8s.io", metav1.GetOptions{})
-	if err != nil {
-		log.Info("Issuer crd for cert-manager not present, qdr-operator will be unable to request certificate generation")
-		return false
-	} else {
-		log.Info("Detected certmanager issuer crd", "issuer", crd)
-		return true
+	for _, certmgrProvider := range GetCrtmgrProviders() {
+		crd, err = extClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get("issuers."+certmgrProvider.GetCertManagerAPIGroup(), metav1.GetOptions{})
+		if err == nil {
+			log.Info(fmt.Sprintf("Detected certmanager issuer crd (%s)", certmgrProvider.GetCertManagerAPIGroup()), "issuer", crd)
+			Provider = certmgrProvider
+			return true
+		}
+		log.Error(err, "Error retrieving CRDs")
 	}
 
-}
+	return false
 
-func NewSelfSignedIssuerForCR(m *v1alpha1.Interconnect) *cmv1alpha1.Issuer {
-	issuer := &cmv1alpha1.Issuer{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Issuer",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-selfsigned",
-			Namespace: m.Namespace,
-		},
-		Spec: cmv1alpha1.IssuerSpec{
-			IssuerConfig: cmv1alpha1.IssuerConfig{
-				SelfSigned: &cmv1alpha1.SelfSignedIssuer{},
-			},
-		},
-	}
-	return issuer
-}
-
-func NewCAIssuerForCR(m *v1alpha1.Interconnect, secret string) *cmv1alpha1.Issuer {
-	issuer := &cmv1alpha1.Issuer{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Issuer",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-ca",
-			Namespace: m.Namespace,
-		},
-		Spec: cmv1alpha1.IssuerSpec{
-			IssuerConfig: cmv1alpha1.IssuerConfig{
-				CA: &cmv1alpha1.CAIssuer{
-					SecretName: secret,
-				},
-			},
-		},
-	}
-	return issuer
-}
-
-func NewCAIssuer(name string, namespace string, secret string) *cmv1alpha1.Issuer {
-	issuer := &cmv1alpha1.Issuer{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Issuer",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: cmv1alpha1.IssuerSpec{
-			IssuerConfig: cmv1alpha1.IssuerConfig{
-				CA: &cmv1alpha1.CAIssuer{
-					SecretName: secret,
-				},
-			},
-		},
-	}
-	return issuer
-}
-
-func NewSelfSignedCACertificateForCR(m *v1alpha1.Interconnect) *cmv1alpha1.Certificate {
-	cert := &cmv1alpha1.Certificate{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Certificate",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-selfsigned",
-			Namespace: m.Namespace,
-		},
-		Spec: cmv1alpha1.CertificateSpec{
-			SecretName: m.Name + "-selfsigned",
-			CommonName: m.Name + "." + m.Namespace + ".svc.cluster.local",
-			IsCA:       true,
-			IssuerRef: cmv1alpha1.ObjectReference{
-				Name: m.Name + "-selfsigned",
-			},
-		},
-	}
-	return cert
-}
-
-func issuerName(m *v1alpha1.Interconnect, name string) string {
-	if name == "" {
-		return m.Name + "-ca"
-	} else {
-		return name
-	}
-
-}
-
-func NewCertificateForCR(m *v1alpha1.Interconnect, profileName string, certName string, issuer string) *cmv1alpha1.Certificate {
-	hostNames := configs.GetInterconnectExposedHostnames(m, profileName)
-	cert := &cmv1alpha1.Certificate{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Certificate",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      certName,
-			Namespace: m.Namespace,
-		},
-		Spec: cmv1alpha1.CertificateSpec{
-			SecretName: certName,
-			CommonName: m.Name,
-			DNSNames:   hostNames,
-			IssuerRef: cmv1alpha1.ObjectReference{
-				Name: issuerName(m, issuer),
-			},
-		},
-	}
-	return cert
-}
-
-func NewCACertificateForCR(m *v1alpha1.Interconnect, name string) *cmv1alpha1.Certificate {
-	cert := &cmv1alpha1.Certificate{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "certmanager.k8s.io/v1alpha1",
-			Kind:       "Certificate",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: m.Namespace,
-		},
-		Spec: cmv1alpha1.CertificateSpec{
-			SecretName: name,
-			CommonName: name,
-			IsCA:       true,
-			IssuerRef: cmv1alpha1.ObjectReference{
-				Name: m.Name + "-selfsigned",
-			},
-		},
-	}
-	return cert
 }

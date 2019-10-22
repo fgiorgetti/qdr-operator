@@ -17,13 +17,14 @@ limitations under the License.
 package gen
 
 import (
-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	cmacme "github.com/jetstack/cert-manager/pkg/apis/acme/v1alpha2"
+	cmmeta "github.com/jetstack/cert-manager/pkg/apis/meta/v1"
 )
 
-type ChallengeModifier func(*v1alpha1.Challenge)
+type ChallengeModifier func(*cmacme.Challenge)
 
-func Challenge(name string, mods ...ChallengeModifier) *v1alpha1.Challenge {
-	c := &v1alpha1.Challenge{
+func Challenge(name string, mods ...ChallengeModifier) *cmacme.Challenge {
+	c := &cmacme.Challenge{
 		ObjectMeta: ObjectMeta(name),
 	}
 	for _, mod := range mods {
@@ -32,7 +33,8 @@ func Challenge(name string, mods ...ChallengeModifier) *v1alpha1.Challenge {
 	return c
 }
 
-func ChallengeFrom(ch *v1alpha1.Challenge, mods ...ChallengeModifier) *v1alpha1.Challenge {
+func ChallengeFrom(ch *cmacme.Challenge, mods ...ChallengeModifier) *cmacme.Challenge {
+	ch = ch.DeepCopy()
 	for _, mod := range mods {
 		mod(ch)
 	}
@@ -40,56 +42,56 @@ func ChallengeFrom(ch *v1alpha1.Challenge, mods ...ChallengeModifier) *v1alpha1.
 }
 
 func SetChallengeType(t string) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
-		ch.Spec.Type = t
+	return func(ch *cmacme.Challenge) {
+		ch.Spec.Type = cmacme.ACMEChallengeType(t)
 	}
 }
 
 // SetIssuer sets the challenge.spec.issuerRef field
-func SetChallengeIssuer(o v1alpha1.ObjectReference) ChallengeModifier {
-	return func(c *v1alpha1.Challenge) {
+func SetChallengeIssuer(o cmmeta.ObjectReference) ChallengeModifier {
+	return func(c *cmacme.Challenge) {
 		c.Spec.IssuerRef = o
 	}
 }
 
 func SetChallengeDNSName(dnsName string) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Spec.DNSName = dnsName
 	}
 }
 
 func SetChallengePresented(p bool) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Status.Presented = p
 	}
 }
 
 func SetChallengeWildcard(p bool) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Spec.Wildcard = p
 	}
 }
 
-func SetChallengeState(s v1alpha1.State) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+func SetChallengeState(s cmacme.State) ChallengeModifier {
+	return func(ch *cmacme.Challenge) {
 		ch.Status.State = s
 	}
 }
 
 func SetChallengeReason(s string) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Status.Reason = s
 	}
 }
 
 func SetChallengeURL(s string) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Spec.URL = s
 	}
 }
 
 func SetChallengeProcessing(b bool) ChallengeModifier {
-	return func(ch *v1alpha1.Challenge) {
+	return func(ch *cmacme.Challenge) {
 		ch.Status.Processing = b
 	}
 }

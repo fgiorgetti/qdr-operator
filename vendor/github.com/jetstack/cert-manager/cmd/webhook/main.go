@@ -22,14 +22,30 @@ import (
 	"time"
 
 	"github.com/openshift/generic-admission-server/pkg/cmd"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog"
 
-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/validation/webhooks"
+	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
+	"github.com/jetstack/cert-manager/pkg/logs"
+	"github.com/jetstack/cert-manager/pkg/webhook"
+	"github.com/jetstack/cert-manager/pkg/webhook/handlers"
 )
 
-var certHook cmd.ValidatingAdmissionHook = &webhooks.CertificateAdmissionHook{}
-var issuerHook cmd.ValidatingAdmissionHook = &webhooks.IssuerAdmissionHook{}
-var clusterIssuerHook cmd.ValidatingAdmissionHook = &webhooks.ClusterIssuerAdmissionHook{}
+var (
+	GroupName = "webhook." + v1alpha2.SchemeGroupVersion.Group
+)
+
+var (
+	validationFuncs = map[schema.GroupVersionKind]handlers.ValidationFunc{
+		v1alpha2.SchemeGroupVersion.WithKind(v1alpha2.CertificateKind):        webhook.ValidateCertificate,
+		v1alpha2.SchemeGroupVersion.WithKind(v1alpha2.CertificateRequestKind): webhook.ValidateCertificateRequest,
+		v1alpha2.SchemeGroupVersion.WithKind(v1alpha2.IssuerKind):             webhook.ValidateIssuer,
+		v1alpha2.SchemeGroupVersion.WithKind(v1alpha2.ClusterIssuerKind):      webhook.ValidateClusterIssuer,
+	}
+)
+
+var validationHook cmd.ValidatingAdmissionHook = handlers.NewFuncBackedValidator(logs.Log, GroupName, webhook.Scheme, validationFuncs)
+var mutationHook cmd.MutatingAdmissionHook = handlers.NewSchemeBackedDefaulter(logs.Log, GroupName, webhook.Scheme)
 
 func main() {
 	// Avoid "logging before flag.Parse" errors from glog
@@ -46,9 +62,8 @@ func main() {
 	}
 
 	cmd.RunAdmissionServer(
-		certHook,
-		issuerHook,
-		clusterIssuerHook,
+		validationHook,
+		mutationHook,
 	)
 }
 
@@ -70,7 +85,7 @@ func runfilewatch(filename string) {
 				// let the k8s scheduler restart us
 				// TODO(dmo): figure out if there's a way to do this with clean
 				// shutdown
-				klog.Info("Detected change in TLS certificate %s. Restarting to pick up new certificate", filename)
+				klog.Infof("Detected change in TLS certificate %s. Restarting to pick up new certificate", filename)
 				os.Exit(0)
 			}
 		}

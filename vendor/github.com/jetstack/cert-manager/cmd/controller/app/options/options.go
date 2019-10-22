@@ -19,17 +19,25 @@ package options
 import (
 	"fmt"
 	"net"
+	"runtime"
 	"time"
 
 	"github.com/spf13/pflag"
 
-	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	cm "github.com/jetstack/cert-manager/pkg/apis/certmanager"
+	cmapi "github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
 	challengescontroller "github.com/jetstack/cert-manager/pkg/controller/acmechallenges"
 	orderscontroller "github.com/jetstack/cert-manager/pkg/controller/acmeorders"
+	cracmecontroller "github.com/jetstack/cert-manager/pkg/controller/certificaterequests/acme"
+	crcacontroller "github.com/jetstack/cert-manager/pkg/controller/certificaterequests/ca"
+	crselfsignedcontroller "github.com/jetstack/cert-manager/pkg/controller/certificaterequests/selfsigned"
+	crvaultcontroller "github.com/jetstack/cert-manager/pkg/controller/certificaterequests/vault"
+	crvenaficontroller "github.com/jetstack/cert-manager/pkg/controller/certificaterequests/venafi"
 	certificatescontroller "github.com/jetstack/cert-manager/pkg/controller/certificates"
 	clusterissuerscontroller "github.com/jetstack/cert-manager/pkg/controller/clusterissuers"
 	ingressshimcontroller "github.com/jetstack/cert-manager/pkg/controller/ingress-shim"
 	issuerscontroller "github.com/jetstack/cert-manager/pkg/controller/issuers"
+	"github.com/jetstack/cert-manager/pkg/controller/webhookbootstrap"
 	"github.com/jetstack/cert-manager/pkg/util"
 )
 
@@ -57,11 +65,10 @@ type ControllerOptions struct {
 	RenewBeforeExpiryDuration       time.Duration
 
 	// Default issuer/certificates details consumed by ingress-shim
-	DefaultIssuerName                  string
-	DefaultIssuerKind                  string
-	DefaultAutoCertificateAnnotations  []string
-	DefaultACMEIssuerChallengeType     string
-	DefaultACMEIssuerDNS01ProviderName string
+	DefaultIssuerName                 string
+	DefaultIssuerKind                 string
+	DefaultIssuerGroup                string
+	DefaultAutoCertificateAnnotations []string
 
 	// Allows specifying a list of custom nameservers to perform DNS checks on.
 	DNS01RecursiveNameservers []string
@@ -70,6 +77,23 @@ type ControllerOptions struct {
 	DNS01RecursiveNameserversOnly bool
 
 	EnableCertificateOwnerRef bool
+
+	MaxConcurrentChallenges int
+
+	// Namespace is the namespace the webhook CA and serving secret will be
+	// created in.
+	// If not specified, it will default to the same namespace as cert-manager.
+	WebhookNamespace string
+
+	// CASecretName is the name of the secret containing the webhook's root CA
+	WebhookCASecretName string
+
+	// ServingSecretName is the name of the secret containing the webhook's
+	// serving certificate
+	WebhookServingSecretName string
+
+	// DNSNames are the dns names that should be set on the serving certificate
+	WebhookDNSNames []string
 }
 
 const (
@@ -89,15 +113,40 @@ const (
 
 	defaultTLSACMEIssuerName           = ""
 	defaultTLSACMEIssuerKind           = "Issuer"
+	defaultTLSACMEIssuerGroup          = cm.GroupName
 	defaultACMEIssuerChallengeType     = "http01"
 	defaultACMEIssuerDNS01ProviderName = ""
 	defaultEnableCertificateOwnerRef   = false
 
 	defaultDNS01RecursiveNameserversOnly = false
+
+	defaultMaxConcurrentChallenges = 60
+
+	defaultWebhookNamespace         = "cert-manager"
+	defaultWebhookCASecretName      = "cert-manager-webhook-ca"
+	defaultWebhookServingSecretName = "cert-manager-webhook-tls"
 )
 
 var (
-	defaultACMEHTTP01SolverImage                 = fmt.Sprintf("quay.io/jetstack/cert-manager-acmesolver:%s", util.AppVersion)
+	defaultWebhookDNSNames = []string{
+		"cert-manager-webhook",
+		"cert-manager-webhook.cert-manager",
+		"cert-manager-webhook.cert-manager.svc",
+		"cert-manager-webhook.cert-manager.svc.cluster",
+		"cert-manager-webhook.cert-manager.svc.cluster.local",
+	}
+)
+
+func computeACMEHTTP01SolverImage(arch string) string {
+	if arch == "amd64" {
+		return fmt.Sprintf("quay.io/jetstack/cert-manager-acmesolver:%s", util.AppVersion)
+	} else {
+		return fmt.Sprintf("quay.io/jetstack/cert-manager-acmesolver-%s:%s", runtime.GOARCH, util.AppVersion)
+	}
+}
+
+var (
+	defaultACMEHTTP01SolverImage                 = computeACMEHTTP01SolverImage(runtime.GOARCH)
 	defaultACMEHTTP01SolverResourceRequestCPU    = "10m"
 	defaultACMEHTTP01SolverResourceRequestMemory = "64Mi"
 	defaultACMEHTTP01SolverResourceLimitsCPU     = "100m"
@@ -112,31 +161,37 @@ var (
 		ingressshimcontroller.ControllerName,
 		orderscontroller.ControllerName,
 		challengescontroller.ControllerName,
+		webhookbootstrap.ControllerName,
+		cracmecontroller.CRControllerName,
+		crcacontroller.CRControllerName,
+		crselfsignedcontroller.CRControllerName,
+		crvaultcontroller.CRControllerName,
+		crvenaficontroller.CRControllerName,
+		certificatescontroller.ControllerName,
 	}
 )
 
 func NewControllerOptions() *ControllerOptions {
 	return &ControllerOptions{
-		APIServerHost:                      defaultAPIServerHost,
-		ClusterResourceNamespace:           defaultClusterResourceNamespace,
-		Namespace:                          defaultNamespace,
-		LeaderElect:                        defaultLeaderElect,
-		LeaderElectionNamespace:            defaultLeaderElectionNamespace,
-		LeaderElectionLeaseDuration:        defaultLeaderElectionLeaseDuration,
-		LeaderElectionRenewDeadline:        defaultLeaderElectionRenewDeadline,
-		LeaderElectionRetryPeriod:          defaultLeaderElectionRetryPeriod,
-		EnabledControllers:                 defaultEnabledControllers,
-		ClusterIssuerAmbientCredentials:    defaultClusterIssuerAmbientCredentials,
-		IssuerAmbientCredentials:           defaultIssuerAmbientCredentials,
-		RenewBeforeExpiryDuration:          defaultRenewBeforeExpiryDuration,
-		DefaultIssuerName:                  defaultTLSACMEIssuerName,
-		DefaultIssuerKind:                  defaultTLSACMEIssuerKind,
-		DefaultAutoCertificateAnnotations:  defaultAutoCertificateAnnotations,
-		DefaultACMEIssuerChallengeType:     defaultACMEIssuerChallengeType,
-		DefaultACMEIssuerDNS01ProviderName: defaultACMEIssuerDNS01ProviderName,
-		DNS01RecursiveNameservers:          []string{},
-		DNS01RecursiveNameserversOnly:      defaultDNS01RecursiveNameserversOnly,
-		EnableCertificateOwnerRef:          defaultEnableCertificateOwnerRef,
+		APIServerHost:                     defaultAPIServerHost,
+		ClusterResourceNamespace:          defaultClusterResourceNamespace,
+		Namespace:                         defaultNamespace,
+		LeaderElect:                       defaultLeaderElect,
+		LeaderElectionNamespace:           defaultLeaderElectionNamespace,
+		LeaderElectionLeaseDuration:       defaultLeaderElectionLeaseDuration,
+		LeaderElectionRenewDeadline:       defaultLeaderElectionRenewDeadline,
+		LeaderElectionRetryPeriod:         defaultLeaderElectionRetryPeriod,
+		EnabledControllers:                defaultEnabledControllers,
+		ClusterIssuerAmbientCredentials:   defaultClusterIssuerAmbientCredentials,
+		IssuerAmbientCredentials:          defaultIssuerAmbientCredentials,
+		RenewBeforeExpiryDuration:         defaultRenewBeforeExpiryDuration,
+		DefaultIssuerName:                 defaultTLSACMEIssuerName,
+		DefaultIssuerKind:                 defaultTLSACMEIssuerKind,
+		DefaultIssuerGroup:                defaultTLSACMEIssuerGroup,
+		DefaultAutoCertificateAnnotations: defaultAutoCertificateAnnotations,
+		DNS01RecursiveNameservers:         []string{},
+		DNS01RecursiveNameserversOnly:     defaultDNS01RecursiveNameserversOnly,
+		EnableCertificateOwnerRef:         defaultEnableCertificateOwnerRef,
 	}
 }
 
@@ -207,11 +262,8 @@ func (s *ControllerOptions) AddFlags(fs *pflag.FlagSet) {
 		"Name of the Issuer to use when the tls is requested but issuer name is not specified on the ingress resource.")
 	fs.StringVar(&s.DefaultIssuerKind, "default-issuer-kind", defaultTLSACMEIssuerKind, ""+
 		"Kind of the Issuer to use when the tls is requested but issuer kind is not specified on the ingress resource.")
-	fs.StringVar(&s.DefaultACMEIssuerChallengeType, "default-acme-issuer-challenge-type", defaultACMEIssuerChallengeType, ""+
-		"The ACME challenge type to use when tls is requested for an ACME Issuer but is not specified on the ingress resource.")
-	fs.StringVar(&s.DefaultACMEIssuerDNS01ProviderName, "default-acme-issuer-dns01-provider-name", defaultACMEIssuerDNS01ProviderName, ""+
-		"Required if --default-acme-issuer-challenge-type is set to dns01. The DNS01 provider to use for ingresses using ACME dns01 "+
-		"validation that do not explicitly state a dns provider.")
+	fs.StringVar(&s.DefaultIssuerGroup, "default-issuer-group", defaultTLSACMEIssuerGroup, ""+
+		"Group of the Issuer to use when the tls is requested but issuer group is not specified on the ingress resource.")
 	fs.StringSliceVar(&s.DNS01RecursiveNameservers, "dns01-recursive-nameservers",
 		[]string{}, "A list of comma seperated dns server endpoints used for "+
 			"DNS01 check requests. This should be a list containing IP address and "+
@@ -231,6 +283,17 @@ func (s *ControllerOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.BoolVar(&s.EnableCertificateOwnerRef, "enable-certificate-owner-ref", defaultEnableCertificateOwnerRef, ""+
 		"Whether to set the certificate resource as an owner of secret where the tls certificate is stored. "+
 		"When this flag is enabled, the secret will be automatically removed when the certificate resource is deleted.")
+	fs.IntVar(&s.MaxConcurrentChallenges, "max-concurrent-challenges", defaultMaxConcurrentChallenges, ""+
+		"The maximum number of challenges that can be scheduled as 'processing' at once.")
+
+	fs.StringVar(&s.WebhookNamespace, "webhook-namespace", defaultWebhookNamespace, "The namespace the webhook component is running in, "+
+		"used for provisioning TLS certificates for the conversion webhook.")
+	fs.StringVar(&s.WebhookCASecretName, "webhook-ca-secret", defaultWebhookCASecretName, "The name of the Secret used to store the webhook's "+
+		"CA data.")
+	fs.StringVar(&s.WebhookServingSecretName, "webhook-serving-secret", defaultWebhookServingSecretName, "The name of the Secret used to store the webhook's "+
+		"serving certificate.")
+	fs.StringSliceVar(&s.WebhookDNSNames, "webhook-dns-names", defaultWebhookDNSNames, "Comma-separated list of DNS names that should be present on "+
+		"the webhook's serving certificate.")
 }
 
 func (o *ControllerOptions) Validate() error {

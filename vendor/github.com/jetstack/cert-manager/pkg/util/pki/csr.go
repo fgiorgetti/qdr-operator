@@ -23,42 +23,19 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
+	"net/url"
+	"strings"
 	"time"
 
-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	apiutil "github.com/jetstack/cert-manager/pkg/api/util"
+	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
 )
 
-// CommonNameForCertificate returns the common name that should be used for the
-// given Certificate resource, by inspecting the CommonName and DNSNames fields.
-func CommonNameForCertificate(crt *v1alpha1.Certificate) string {
-	if crt.Spec.CommonName != "" {
-		return crt.Spec.CommonName
-	}
-	if len(crt.Spec.DNSNames) == 0 {
-		return ""
-	}
-	return crt.Spec.DNSNames[0]
-}
-
-// DNSNamesForCertificate returns the DNS names that should be used for the
-// given Certificate resource, by inspecting the CommonName and DNSNames fields.
-func DNSNamesForCertificate(crt *v1alpha1.Certificate) []string {
-	if len(crt.Spec.DNSNames) == 0 {
-		if crt.Spec.CommonName == "" {
-			return []string{}
-		}
-		return []string{crt.Spec.CommonName}
-	}
-	if crt.Spec.CommonName != "" {
-		return removeDuplicates(append([]string{crt.Spec.CommonName}, crt.Spec.DNSNames...))
-	}
-	return crt.Spec.DNSNames
-}
-
-func IPAddressesForCertificate(crt *v1alpha1.Certificate) []net.IP {
+func IPAddressesForCertificate(crt *v1alpha2.Certificate) []net.IP {
 	var ipAddresses []net.IP
 	var ip net.IP
 	for _, ipName := range crt.Spec.IPAddresses {
@@ -70,12 +47,64 @@ func IPAddressesForCertificate(crt *v1alpha1.Certificate) []net.IP {
 	return ipAddresses
 }
 
+func URIsForCertificate(crt *v1alpha2.Certificate) ([]*url.URL, error) {
+	uris, err := URLsFromStrings(crt.Spec.URISANs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URIs: %s", err)
+	}
+
+	return uris, nil
+}
+
+func DNSNamesForCertificate(crt *v1alpha2.Certificate) ([]string, error) {
+	_, err := URLsFromStrings(crt.Spec.DNSNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse DNSNames: %s", err)
+	}
+
+	return crt.Spec.DNSNames, nil
+}
+
+func URLsFromStrings(urlStrs []string) ([]*url.URL, error) {
+	var urls []*url.URL
+	var errs []string
+
+	for _, urlStr := range urlStrs {
+		url, err := url.Parse(urlStr)
+		if err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+
+		urls = append(urls, url)
+	}
+
+	if len(errs) > 0 {
+		return nil, errors.New(strings.Join(errs, ", "))
+	}
+
+	return urls, nil
+}
+
 func IPAddressesToString(ipAddresses []net.IP) []string {
 	var ipNames []string
 	for _, ip := range ipAddresses {
 		ipNames = append(ipNames, ip.String())
 	}
 	return ipNames
+}
+
+func URLsToString(uris []*url.URL) []string {
+	var uriStrs []string
+	for _, uri := range uris {
+		if uri == nil {
+			panic("provided uri to string is nil")
+		}
+
+		uriStrs = append(uriStrs, uri.String())
+	}
+
+	return uriStrs
 }
 
 func removeDuplicates(in []string) []string {
@@ -97,7 +126,7 @@ const defaultOrganization = "cert-manager"
 // OrganizationForCertificate will return the Organization to set for the
 // Certificate resource.
 // If an Organization is not specifically set, a default will be used.
-func OrganizationForCertificate(crt *v1alpha1.Certificate) []string {
+func OrganizationForCertificate(crt *v1alpha2.Certificate) []string {
 	if len(crt.Spec.Organization) == 0 {
 		return []string{defaultOrganization}
 	}
@@ -107,18 +136,50 @@ func OrganizationForCertificate(crt *v1alpha1.Certificate) []string {
 
 var serialNumberLimit = new(big.Int).Lsh(big.NewInt(1), 128)
 
+func buildUsages(usages []v1alpha2.KeyUsage, isCA bool) (ku x509.KeyUsage, eku []x509.ExtKeyUsage, err error) {
+	var unk []v1alpha2.KeyUsage
+	if isCA {
+		ku |= x509.KeyUsageCertSign
+	}
+	if len(usages) == 0 {
+		usages = append(usages, v1alpha2.DefaultKeyUsages()...)
+	}
+	for _, u := range usages {
+		if kuse, ok := apiutil.KeyUsageType(u); ok {
+			ku |= kuse
+		} else if ekuse, ok := apiutil.ExtKeyUsageType(u); ok {
+			eku = append(eku, ekuse)
+		} else {
+			unk = append(unk, u)
+		}
+	}
+	if len(unk) > 0 {
+		err = fmt.Errorf("unknown key usages: %v", unk)
+	}
+	return
+}
+
 // GenerateCSR will generate a new *x509.CertificateRequest template to be used
 // by issuers that utilise CSRs to obtain Certificates.
 // The CSR will not be signed, and should be passed to either EncodeCSR or
 // to the x509.CreateCertificateRequest function.
-func GenerateCSR(issuer v1alpha1.GenericIssuer, crt *v1alpha1.Certificate) (*x509.CertificateRequest, error) {
-	commonName := CommonNameForCertificate(crt)
-	dnsNames := DNSNamesForCertificate(crt)
+func GenerateCSR(crt *v1alpha2.Certificate) (*x509.CertificateRequest, error) {
+	commonName := crt.Spec.CommonName
 	iPAddresses := IPAddressesForCertificate(crt)
 	organization := OrganizationForCertificate(crt)
 
-	if len(commonName) == 0 && len(dnsNames) == 0 {
-		return nil, fmt.Errorf("no domains specified on certificate")
+	dnsNames, err := DNSNamesForCertificate(crt)
+	if err != nil {
+		return nil, err
+	}
+
+	uriNames, err := URIsForCertificate(crt)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(commonName) == 0 && len(dnsNames) == 0 && len(uriNames) == 0 {
+		return nil, fmt.Errorf("no common name, DNS name, or URI SAN specified on certificate")
 	}
 
 	pubKeyAlgo, sigAlgo, err := SignatureAlgorithm(crt)
@@ -136,6 +197,7 @@ func GenerateCSR(issuer v1alpha1.GenericIssuer, crt *v1alpha1.Certificate) (*x50
 		},
 		DNSNames:    dnsNames,
 		IPAddresses: iPAddresses,
+		URIs:        uriNames,
 		// TODO: work out how best to handle extensions/key usages here
 		ExtraExtensions: []pkix.Extension{},
 	}, nil
@@ -145,11 +207,15 @@ func GenerateCSR(issuer v1alpha1.GenericIssuer, crt *v1alpha1.Certificate) (*x50
 // This should create a Certificate template that is equivalent to the CertificateRequest
 // generated by GenerateCSR.
 // The PublicKey field must be populated by the caller.
-func GenerateTemplate(crt *v1alpha1.Certificate) (*x509.Certificate, error) {
-	commonName := CommonNameForCertificate(crt)
-	dnsNames := DNSNamesForCertificate(crt)
+func GenerateTemplate(crt *v1alpha2.Certificate) (*x509.Certificate, error) {
+	commonName := crt.Spec.CommonName
+	dnsNames := crt.Spec.DNSNames
 	ipAddresses := IPAddressesForCertificate(crt)
 	organization := OrganizationForCertificate(crt)
+	keyUsages, extKeyUsages, err := buildUsages(crt.Spec.Usages, crt.Spec.IsCA)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(commonName) == 0 && len(dnsNames) == 0 {
 		return nil, fmt.Errorf("no domains specified on certificate")
@@ -160,19 +226,11 @@ func GenerateTemplate(crt *v1alpha1.Certificate) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("failed to generate serial number: %s", err.Error())
 	}
 
-	certDuration := v1alpha1.DefaultCertificateDuration
-	if crt.Spec.Duration != nil {
-		certDuration = crt.Spec.Duration.Duration
-	}
+	certDuration := apiutil.DefaultCertDuration(crt.Spec.Duration)
 
 	pubKeyAlgo, _, err := SignatureAlgorithm(crt)
 	if err != nil {
 		return nil, err
-	}
-
-	keyUsages := x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment
-	if crt.Spec.IsCA {
-		keyUsages |= x509.KeyUsageCertSign
 	}
 
 	return &x509.Certificate{
@@ -189,13 +247,72 @@ func GenerateTemplate(crt *v1alpha1.Certificate) (*x509.Certificate, error) {
 		NotAfter:  time.Now().Add(certDuration),
 		// see http://golang.org/pkg/crypto/x509/#KeyUsage
 		KeyUsage:    keyUsages,
+		ExtKeyUsage: extKeyUsages,
 		DNSNames:    dnsNames,
 		IPAddresses: ipAddresses,
 	}, nil
 }
 
+// GenerateTemplate will create a x509.Certificate for the given
+// CertificateRequest resource
+func GenerateTemplateFromCertificateRequest(cr *v1alpha2.CertificateRequest) (*x509.Certificate, error) {
+	certDuration := apiutil.DefaultCertDuration(cr.Spec.Duration)
+	keyUsage, extKeyUsage, err := buildUsages(cr.Spec.Usages, cr.Spec.IsCA)
+	if err != nil {
+		return nil, err
+	}
+	return GenerateTemplateFromCSRPEMWithUsages(cr.Spec.CSRPEM, certDuration, cr.Spec.IsCA, keyUsage, extKeyUsage)
+}
+
+func GenerateTemplateFromCSRPEM(csrPEM []byte, duration time.Duration, isCA bool) (*x509.Certificate, error) {
+	var (
+		ku  x509.KeyUsage
+		eku []x509.ExtKeyUsage
+	)
+	return GenerateTemplateFromCSRPEMWithUsages(csrPEM, duration, isCA, ku, eku)
+}
+
+func GenerateTemplateFromCSRPEMWithUsages(csrPEM []byte, duration time.Duration, isCA bool, keyUsage x509.KeyUsage, extKeyUsage []x509.ExtKeyUsage) (*x509.Certificate, error) {
+	block, _ := pem.Decode(csrPEM)
+	if block == nil {
+		return nil, errors.New("failed to decode csr")
+	}
+
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := csr.CheckSignature(); err != nil {
+		return nil, err
+	}
+
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %s", err.Error())
+	}
+
+	return &x509.Certificate{
+		Version:               csr.Version,
+		BasicConstraintsValid: true,
+		SerialNumber:          serialNumber,
+		PublicKeyAlgorithm:    csr.PublicKeyAlgorithm,
+		PublicKey:             csr.PublicKey,
+		IsCA:                  isCA,
+		Subject:               csr.Subject,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(duration),
+		// see http://golang.org/pkg/crypto/x509/#KeyUsage
+		KeyUsage:    keyUsage,
+		ExtKeyUsage: extKeyUsage,
+		DNSNames:    csr.DNSNames,
+		IPAddresses: csr.IPAddresses,
+		URIs:        csr.URIs,
+	}, nil
+}
+
 // SignCertificate returns a signed x509.Certificate object for the given
-// *v1alpha1.Certificate crt.
+// *v1alpha2.Certificate crt.
 // publicKey is the public key of the signee, and signerKey is the private
 // key of the signer.
 // It returns a PEM encoded copy of the Certificate as well as a *x509.Certificate
@@ -219,6 +336,39 @@ func SignCertificate(template *x509.Certificate, issuerCert *x509.Certificate, p
 	}
 
 	return pemBytes.Bytes(), cert, err
+}
+
+// SignCSRTemplate signs a certificate template usually based upon a CSR. This
+// function expects all fields to be present in the certificate template,
+// including it's public key.
+// It returns the certificate data followed by the CA data, encoded in PEM format.
+func SignCSRTemplate(caCerts []*x509.Certificate, caKey crypto.Signer, template *x509.Certificate) ([]byte, []byte, error) {
+	if len(caCerts) == 0 {
+		return nil, nil, errors.New("no CA certificates given to sign CSR template")
+	}
+
+	caCert := caCerts[0]
+
+	certPem, _, err := SignCertificate(template, caCert, template.PublicKey, caKey)
+	if err != nil {
+		return nil, nil, err
+
+	}
+
+	chainPem, err := EncodeX509Chain(caCerts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	certPem = append(certPem, chainPem...)
+
+	// encode the CA certificate to be bundled in the output
+	caPem, err := EncodeX509(caCerts[0])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return certPem, caPem, nil
 }
 
 // EncodeCSR calls x509.CreateCertificateRequest to sign the given CSR template.
@@ -263,15 +413,15 @@ func EncodeX509Chain(certs []*x509.Certificate) ([]byte, error) {
 // SignatureAlgorithm will determine the appropriate signature algorithm for
 // the given certificate.
 // Adapted from https://github.com/cloudflare/cfssl/blob/master/csr/csr.go#L102
-func SignatureAlgorithm(crt *v1alpha1.Certificate) (x509.PublicKeyAlgorithm, x509.SignatureAlgorithm, error) {
+func SignatureAlgorithm(crt *v1alpha2.Certificate) (x509.PublicKeyAlgorithm, x509.SignatureAlgorithm, error) {
 	var sigAlgo x509.SignatureAlgorithm
 	var pubKeyAlgo x509.PublicKeyAlgorithm
 	switch crt.Spec.KeyAlgorithm {
-	case v1alpha1.KeyAlgorithm(""):
+	case v1alpha2.KeyAlgorithm(""):
 		// If keyAlgorithm is not specified, we default to rsa with keysize 2048
 		pubKeyAlgo = x509.RSA
 		sigAlgo = x509.SHA256WithRSA
-	case v1alpha1.RSAKeyAlgorithm:
+	case v1alpha2.RSAKeyAlgorithm:
 		pubKeyAlgo = x509.RSA
 		switch {
 		case crt.Spec.KeySize >= 4096:
@@ -286,7 +436,7 @@ func SignatureAlgorithm(crt *v1alpha1.Certificate) (x509.PublicKeyAlgorithm, x50
 		default:
 			return x509.UnknownPublicKeyAlgorithm, x509.UnknownSignatureAlgorithm, fmt.Errorf("unsupported rsa keysize specified: %d. min keysize %d", crt.Spec.KeySize, MinRSAKeySize)
 		}
-	case v1alpha1.ECDSAKeyAlgorithm:
+	case v1alpha2.ECDSAKeyAlgorithm:
 		pubKeyAlgo = x509.ECDSA
 		switch crt.Spec.KeySize {
 		case 521:

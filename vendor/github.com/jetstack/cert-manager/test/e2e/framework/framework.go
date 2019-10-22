@@ -22,17 +22,18 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/core/v1"
 	api "k8s.io/api/core/v1"
+	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextcs "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	kscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	apireg "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1beta1"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha1"
+	"github.com/jetstack/cert-manager/pkg/apis/certmanager/v1alpha2"
 	clientset "github.com/jetstack/cert-manager/pkg/client/clientset/versioned"
 	certmgrscheme "github.com/jetstack/cert-manager/pkg/client/clientset/versioned/scheme"
 	"github.com/jetstack/cert-manager/pkg/util/pki"
@@ -50,6 +51,8 @@ var Scheme = runtime.NewScheme()
 func init() {
 	kscheme.AddToScheme(Scheme)
 	certmgrscheme.AddToScheme(Scheme)
+	apiext.AddToScheme(Scheme)
+	apireg.AddToScheme(Scheme)
 }
 
 // DefaultConfig contains the default shared config the is likely parsed from
@@ -74,7 +77,7 @@ type Framework struct {
 	CRClient crclient.Client
 
 	// Namespace in which all test resources should reside
-	Namespace *v1.Namespace
+	Namespace *api.Namespace
 
 	// To make sure that this framework cleans up after itself, no matter what,
 	// we install a Cleanup action before each test and clear it after.  If we
@@ -152,6 +155,17 @@ func (f *Framework) AfterEach() {
 
 	f.printAddonLogs()
 
+	if !f.Config.Cleanup {
+		return
+	}
+
+	for i := len(f.requiredAddons) - 1; i >= 0; i-- {
+		a := f.requiredAddons[i]
+		By("De-provisioning test-scoped addon")
+		err := a.Deprovision()
+		Expect(err).NotTo(HaveOccurred())
+	}
+
 	By("Deleting test namespace")
 	err := f.DeleteKubeNamespace(f.Namespace.Name)
 	Expect(err).NotTo(HaveOccurred())
@@ -168,8 +182,10 @@ func (f *Framework) printAddonLogs() {
 				l, err := a.Logs()
 				Expect(err).NotTo(HaveOccurred())
 
-				// TODO: replace with writing logs to a file
-				log.Logf("Got pod logs for addon: \n%s", l)
+				for ident, l := range l {
+					// TODO: replace with writing logs to a file
+					log.Logf("Got pod logs %q for addon: \n%s", ident, l)
+				}
 			}
 		}
 	}
@@ -190,7 +206,7 @@ func (f *Framework) RequireGlobalAddon(a addon.Addon) {
 }
 
 type loggableAddon interface {
-	Logs() (string, error)
+	Logs() (map[string]string, error)
 }
 
 // RequireAddon calls the Setup and Provision method on the given addon, failing
@@ -209,21 +225,13 @@ func (f *Framework) RequireAddon(a addon.Addon) {
 		err = a.Provision()
 		Expect(err).NotTo(HaveOccurred())
 	})
-
-	AfterEach(func() {
-		if !f.Config.Cleanup {
-			return
-		}
-		err := a.Deprovision()
-		Expect(err).NotTo(HaveOccurred())
-	})
 }
 
 func (f *Framework) Helper() *helper.Helper {
 	return f.helper
 }
 
-func (f *Framework) CertificateDurationValid(c *v1alpha1.Certificate, duration time.Duration) {
+func (f *Framework) CertificateDurationValid(c *v1alpha2.Certificate, duration time.Duration, fuzz time.Duration) {
 	By("Verifying TLS certificate exists")
 	secret, err := f.KubeClientSet.CoreV1().Secrets(f.Namespace.Name).Get(c.Spec.SecretName, metav1.GetOptions{})
 	Expect(err).NotTo(HaveOccurred())
@@ -232,6 +240,21 @@ func (f *Framework) CertificateDurationValid(c *v1alpha1.Certificate, duration t
 		Failf("No certificate data found for Certificate %q", c.Name)
 	}
 	cert, err := pki.DecodeX509CertificateBytes(certBytes)
+	Expect(err).NotTo(HaveOccurred())
+	By("Verifying that the duration is valid")
+	certDuration := cert.NotAfter.Sub(cert.NotBefore)
+	if certDuration > (duration+fuzz) || certDuration < duration {
+		Failf("Expected duration of %s, got %s (fuzz: %s) [NotBefore: %s, NotAfter: %s]", duration, certDuration,
+			fuzz, cert.NotBefore.Format(time.RFC3339), cert.NotAfter.Format(time.RFC3339))
+	}
+}
+
+func (f *Framework) CertificateRequestDurationValid(c *v1alpha2.CertificateRequest, duration time.Duration) {
+	By("Verifying TLS certificate exists")
+	if len(c.Status.Certificate) == 0 {
+		Failf("No certificate data found for CertificateRequest %s", c.Name)
+	}
+	cert, err := pki.DecodeX509CertificateBytes(c.Status.Certificate)
 	Expect(err).NotTo(HaveOccurred())
 	By("Verifying that the duration is valid")
 	if cert.NotAfter.Sub(cert.NotBefore) != duration {
