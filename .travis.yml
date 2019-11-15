@@ -52,9 +52,9 @@ before_install:
 
   # Get tools
   - go get sigs.k8s.io/kind
-  - go get github.com/wadey/gocovmerge
-  - go get golang.org/x/lint/golint
-  - go get github.com/mattn/goveralls
+  #- go get github.com/wadey/gocovmerge
+  #- go get golang.org/x/lint/golint
+  #- go get github.com/mattn/goveralls
 
   # Setup kubectl
   - curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/${KUBERNETES_VERSION}/bin/linux/amd64/kubectl
@@ -91,7 +91,7 @@ script:
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
   - unset CI
   - make
-  - go test --count=1 ./test/e2e
+  - go test --count=1 -v ./test/e2e
 #  - go test --count=1 -v "./test/e2e" -covermode=atomic -coverprofile=organize.cov
 
 # after_success:
