@@ -85,7 +85,7 @@ before_install:
 
   # Setup
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
-  - dep init && dep ensure -v && dep status
+  - dep ensure -v && dep status
 
 script:
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
