@@ -53,7 +53,7 @@ before_install:
   #- dep ensure
 
   # Get tools
-  - go get sigs.k8s.io/kind
+  - GOFLAGS="" && go get sigs.k8s.io/kind
   #- go get github.com/wadey/gocovmerge
   #- go get golang.org/x/lint/golint
   #- go get github.com/mattn/goveralls
