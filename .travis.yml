@@ -43,6 +43,7 @@ env:
 
 before_install:
   # Fork Hack
+  - echo $GOPATH
   - mkdir -p $GOPATH/src/github.com/interconnectedcloud/
   - ln -s $GOPATH/src/github.com/enkeys/qdr-operator $GOPATH/src/github.com/interconnectedcloud/qdr-operator
 
