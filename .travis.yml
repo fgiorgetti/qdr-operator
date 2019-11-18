@@ -35,6 +35,7 @@ env:
     # - OPERATORSDK_VERSION=$(curl -s https://api.github.com/repos/operator-framework/operator-sdk/releases/latest | grep tag_name | sed -E "s/.*\"([^\"]+)\".*/\1/")
     - OPERATORSDK_VERSION=v0.8.1
     - GO111MODULE=on
+    - GOFLAGS="-mod=vendor"
 
     # QDR
     - REGISTRY=quay.io/interconnectedcloud
