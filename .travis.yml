@@ -34,8 +34,7 @@ env:
     - KUBERNETES_VERSION=$(curl -k -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)
     # - OPERATORSDK_VERSION=$(curl -s https://api.github.com/repos/operator-framework/operator-sdk/releases/latest | grep tag_name | sed -E "s/.*\"([^\"]+)\".*/\1/")
     - OPERATORSDK_VERSION=v0.8.1
-    - GO111MODULE=on
-    - GOFLAGS="-mod=vendor"
+    - GO111MODULE=auto
 
     # QDR
     - REGISTRY=quay.io/interconnectedcloud
@@ -53,7 +52,7 @@ before_install:
   #- dep ensure
 
   # Get tools
-  - GOFLAGS="" && go get sigs.k8s.io/kind
+  - go get sigs.k8s.io/kind
   #- go get github.com/wadey/gocovmerge
   #- go get golang.org/x/lint/golint
   #- go get github.com/mattn/goveralls
