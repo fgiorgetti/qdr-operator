@@ -84,8 +84,8 @@ before_install:
   - sudo mv operator-sdk /usr/local/bin/
 
   # Install cert-manager
-  - kubectl create namespace cert-manager
-  - kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.8.1/cert-manager.yaml
+  # - kubectl create namespace cert-manager
+  # - kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.12.0/cert-manager.yaml
 
   # Setup
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
