@@ -25,11 +25,11 @@ git:
 
 env:
   global:
-    - CHANGE_MINIKUBE_NONE_USER=true
-    - MINIKUBE_WANTUPDATENOTIFICATION=false
-    - MINIKUBE_WANTREPORTERRORPROMPT=false
-    - MINIKUBE_HOME=$HOME
-    - CHANGE_MINIKUBE_NONE_USER=true
+#    - CHANGE_MINIKUBE_NONE_USER=true
+#    - MINIKUBE_WANTUPDATENOTIFICATION=false
+#    - MINIKUBE_WANTREPORTERRORPROMPT=false
+#    - MINIKUBE_HOME=$HOME
+#   - CHANGE_MINIKUBE_NONE_USER=true
     - KUBECONFIG=$HOME/.kube/config
     - KUBERNETES_VERSION=$(curl -k -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)
     # - OPERATORSDK_VERSION=$(curl -s https://api.github.com/repos/operator-framework/operator-sdk/releases/latest | grep tag_name | sed -E "s/.*\"([^\"]+)\".*/\1/")
@@ -85,7 +85,7 @@ before_install:
 
   # Install cert-manager
   - kubectl create namespace cert-manager
-  - kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.8.0/cert-manager.yaml
+  - kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.8.1/cert-manager.yaml
 
   # Setup
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
