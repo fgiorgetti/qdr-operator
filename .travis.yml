@@ -44,14 +44,14 @@ env:
 before_install:
   # Fork Hack
   - mkdir -p $GOPATH/src/github.com/interconnectedcloud/
-  - ln -s $GOPATH/src/github.com/enkeys/qdr-operator $GOPATH/src/github.com/interconnectedcloud/qdr-operator
+  - ln -s $GOPATH/src/github.com/fgiorgetti/qdr-operator $GOPATH/src/github.com/interconnectedcloud/qdr-operator
 
   # Install Go Dep
   - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
   - dep ensure
 
   # Get tools
-  - go get sigs.k8s.io/kind
+  #- go get sigs.k8s.io/kind
   #- go get github.com/wadey/gocovmerge
   #- go get golang.org/x/lint/golint
   #- go get github.com/mattn/goveralls
@@ -73,11 +73,6 @@ before_install:
   #- sudo minikube update-context
   #- sudo chown -R travis $HOME/.minikube/
 
-  # Create a new Kubernetes cluster using KinD
-  - kind create cluster
-  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
-  - kubectl cluster-info
-
   # Install Operator SDK
   - curl -Lo operator-sdk https://github.com/operator-framework/operator-sdk/releases/download/${OPERATORSDK_VERSION}/operator-sdk-${OPERATORSDK_VERSION}-x86_64-linux-gnu
   - chmod +x operator-sdk
@@ -95,6 +90,15 @@ script:
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
   - unset CI
   - make
+
+  # Get tools
+  - go get sigs.k8s.io/kind
+
+  # Create a new Kubernetes cluster using KinD
+  - kind create cluster
+  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
+  - kubectl cluster-info
+
   - go test --count=1 -v ./test/e2e
 #  - go test --count=1 -v "./test/e2e" -covermode=atomic -coverprofile=organize.cov
 
