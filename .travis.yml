@@ -51,7 +51,7 @@ before_install:
   - dep ensure
 
   # Get tools
-  #- go get sigs.k8s.io/kind
+  - go get sigs.k8s.io/kind
   #- go get github.com/wadey/gocovmerge
   #- go get golang.org/x/lint/golint
   #- go get github.com/mattn/goveralls
@@ -60,6 +60,11 @@ before_install:
   - curl -Lo kubectl https://storage.googleapis.com/kubernetes-release/release/${KUBERNETES_VERSION}/bin/linux/amd64/kubectl
   - chmod +x kubectl
   - sudo mv kubectl /usr/local/bin/
+
+  # Create a new Kubernetes cluster using KinD
+  - kind create cluster
+  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
+  - kubectl cluster-info
 
   # Setup minikube.
   #- curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
@@ -89,16 +94,9 @@ before_install:
 script:
   - cd $GOPATH/src/github.com/interconnectedcloud/qdr-operator
   - unset CI
+  - set
+  - set | egrep -i '(mod=|vendor)'
   - make
-
-  # Get tools
-  - go get sigs.k8s.io/kind
-
-  # Create a new Kubernetes cluster using KinD
-  - kind create cluster
-  - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
-  - kubectl cluster-info
-
   - go test --count=1 -v ./test/e2e
 #  - go test --count=1 -v "./test/e2e" -covermode=atomic -coverprofile=organize.cov
 
