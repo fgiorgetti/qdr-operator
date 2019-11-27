@@ -96,7 +96,7 @@ script:
   - unset CI
   - set
   - set | egrep -i '(mod=|vendor)'
-  - make
+  - UNSET CI; make
   - go test --count=1 -v ./test/e2e
 #  - go test --count=1 -v "./test/e2e" -covermode=atomic -coverprofile=organize.cov
 
