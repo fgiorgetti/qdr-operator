@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"os"
 	"testing"
     "os"
 
