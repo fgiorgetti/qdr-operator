@@ -19,6 +19,7 @@ package e2e
 import (
 	"os"
 	"testing"
+    "os"
 
 	// Never, ever remove the line with "/ginkgo". Without it,
 	// the ginkgo test runner will not detect that this
@@ -33,7 +34,7 @@ func TestMain(m *testing.M) {
 	// Register framework flags
 	framework.HandleFlags()
 	framework.AfterReadingAllFlags(&framework.TestContext)
-	os.Exit(m.Run())
+    os.Exit(m.Run())
 }
 
 func TestE2E(t *testing.T) {
