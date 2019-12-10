@@ -41,6 +41,7 @@ before_install:
   # Create a new Kubernetes cluster using KinD
   - kind create cluster
   - export KUBECONFIG="$(kind get kubeconfig-path --name="kind")"
+  - echo "KUBECONFIG=${KUBECONFIG}"
   - kubectl cluster-info
 
   # Install Operator SDK
